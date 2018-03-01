@@ -11,4 +11,16 @@
 
 #include <chrono>
 
+#include <atomic>
+
+#include <mutex>
+
+#include <list>
+
+#include <map>
+
+#include <vector>
+
+#include <algorithm>
+
 #include <Windows.h>
