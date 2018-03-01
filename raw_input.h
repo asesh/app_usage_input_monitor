@@ -15,10 +15,12 @@ public:
 
 	void on_app_switched();
 
+	void reset_hardware_usage_time();
+
 protected:
 
-	int16_t m_keydown_activity_counter;
-	int16_t m_mouse_activity_counter;
+	int16_t m_keydown_counter;
+	int16_t m_mouse_keys_down_counter;
 
 	std::mutex m_input_mutex;
 
@@ -28,7 +30,6 @@ protected:
 	bool m_keyboard_active;
 	bool m_mouse_active;
 
-	uint64_t mouse_start_time;
-	uint64_t keyboard_start_time;
-
+	uint64_t m_mouse_start_time, m_mouse_usage_accumulated_time;
+	uint64_t m_keyboard_start_time, m_keyboard_usage_accumulated_time;
 };

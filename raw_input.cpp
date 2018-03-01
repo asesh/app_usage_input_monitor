@@ -6,7 +6,9 @@
 
 CRawInput::CRawInput()
 {
-	m_keydown_activity_counter = 0;
+	m_keydown_counter = 0;
+
+	reset_hardware_usage_time();
 }
 
 CRawInput::~CRawInput()
@@ -69,15 +71,15 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				{
 					// This key was not down before
 					m_keydown_virtual_keys.push_back(raw_input->data.keyboard.VKey);
-					m_keydown_activity_counter++;
+					m_keydown_counter++;
 					std::wstring message;
-					message.append(L"\n\tKey is down; **counter: " + std::to_wstring(m_keydown_activity_counter));
+					message.append(L"\n\tKey is down; **counter: " + std::to_wstring(m_keydown_counter));
 					::OutputDebugString(message.data());
 
-					// If a key is down, let's assign the initial time
-					if (m_keydown_activity_counter == 1)
+					// Initially if a key is down, let's assign the current time
+					if (m_keydown_counter == 1)
 					{
-						keyboard_start_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+						m_keyboard_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						return true;
 					}
 				}
@@ -91,18 +93,25 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				{
 					// This key was down before so let's remove it from the container
 					m_keydown_virtual_keys.remove(raw_input->data.keyboard.VKey);
-					m_keydown_activity_counter--;
+					m_keydown_counter--;
 					std::wstring message;
-					message.append(L"\n\tKey is up; **counter: " + std::to_wstring(m_keydown_activity_counter));
+					message.append(L"\n\tKey is up; **counter: " + std::to_wstring(m_keydown_counter));
 					::OutputDebugString(message.data());
+
+					// Check if all the keys from the keyboard have been released
+					if (m_keydown_counter == 0)
+					{
+						// This means all the pressed keys have been released
+						m_keyboard_usage_accumulated_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+							std::chrono::high_resolution_clock().now().time_since_epoch()).count() - m_keyboard_start_time;
+
+						m_keyboard_start_time = 0; // Reset keyboard start time
+
+						std::wstring message;
+						message.append(L"\n\t**None of the keys are down: **" + std::to_wstring(m_keyboard_usage_accumulated_time));
+						::OutputDebugString(message.data());
+					}
 				}
-			}
-			
-			// Check if none of the keys are down
-			if (m_keydown_activity_counter == 0)
-			{
-				// All the keys from the keyboard have been released
-				::OutputDebugString(L"\n\t**None of the keys are down**");
 			}
 			break;
 
@@ -175,5 +184,13 @@ bool CRawInput::read_input_data(LPARAM lparam)
 
 void CRawInput::on_app_switched()
 {
-	mouse_start_time = keyboard_start_time = std::chrono::high_resolution_clock().now().time_since_epoch().count();
+	std::lock_guard<std::mutex> input_mutex(m_input_mutex);
+
+	// Assign the initial time
+	m_mouse_start_time = m_keyboard_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+}
+
+void CRawInput::reset_hardware_usage_time()
+{
+	m_mouse_start_time = m_keyboard_start_time = m_keyboard_usage_accumulated_time = m_mouse_usage_accumulated_time = 0;
 }
