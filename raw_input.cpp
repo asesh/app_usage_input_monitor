@@ -13,7 +13,7 @@ CRawInput::CRawInput()
 
 CRawInput::~CRawInput()
 {
-
+	destroy_input_monitor_timer_queue();
 }
 
 bool CRawInput::init(HWND window_handle)
@@ -40,6 +40,8 @@ bool CRawInput::init(HWND window_handle)
 		return false;
 	}
 
+	create_input_monitor_timer_queue();
+
 	return true;
 }
 
@@ -64,7 +66,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 		case RIM_TYPEKEYBOARD: // So we have keyboard data
 			if (raw_input->data.keyboard.Flags == RI_KEY_MAKE) // Key is down
 			{
-				std::lock_guard<std::mutex> input_mutex(m_keyboard_mutex);
+				std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
 
 				// A user could have continuously pressed one or more keys so let's filter it out here
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) == m_keydown_virtual_keys.end())
@@ -79,14 +81,14 @@ bool CRawInput::read_input_data(LPARAM lparam)
 					// Initially if a key is down, let's assign the current time
 					if (m_keydown_counter == 1)
 					{
-						m_keyboard_usage_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+						m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 						return true;
 					}
 				}
 			}
 			else if (raw_input->data.keyboard.Flags == RI_KEY_BREAK) // Key is up
 			{
-				std::lock_guard<std::mutex> input_mutex(m_keyboard_mutex);
+				std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
 
 				// If a key was previously down, let's check and remove it from the container
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) != m_keydown_virtual_keys.end())
@@ -102,13 +104,13 @@ bool CRawInput::read_input_data(LPARAM lparam)
 					if (m_keydown_counter == 0)
 					{
 						// This means all the pressed keys have been released
-						m_keyboard_usage_accumulated_time += std::chrono::duration_cast<std::chrono::milliseconds>(
-							std::chrono::high_resolution_clock().now().time_since_epoch()).count() - m_keyboard_usage_start_time;
+						m_input_hardware_accumulated_time += std::chrono::duration_cast<std::chrono::milliseconds>(
+							std::chrono::high_resolution_clock().now().time_since_epoch()).count() - m_input_hardware_start_time;
 
-						m_keyboard_usage_start_time = 0; // Reset keyboard start time
+						m_input_hardware_start_time = 0; // Reset keyboard start time
 
 						std::wstring message;
-						message.append(L"\n\t**None of the keys are down: **" + std::to_wstring(m_keyboard_usage_accumulated_time));
+						message.append(L"\n\t**None of the keys are down: **" + std::to_wstring(m_input_hardware_accumulated_time));
 						::OutputDebugString(message.data());
 					}
 				}
@@ -116,15 +118,15 @@ bool CRawInput::read_input_data(LPARAM lparam)
 			break;
 
 		case RIM_TYPEMOUSE: // So we have mouse data
-			if (raw_input->data.mouse.usFlags == MOUSE_ATTRIBUTES_CHANGED)
-			{
-				::OutputDebugString(L"\n\tMouse attributes changed");
-			}
-			//if (raw_input->data.mouse.usFlags == MOUSE_MOVE_RELATIVE)
+			//if ((raw_input->data.mouse.usFlags & MOUSE_ATTRIBUTES_CHANGED) == MOUSE_ATTRIBUTES_CHANGED)
+			//{
+			//	::OutputDebugString(L"\n\tMouse attributes changed");
+			//}
+			//if ((raw_input->data.mouse.usFlags & MOUSE_MOVE_RELATIVE) == MOUSE_MOVE_RELATIVE)
 			//{
 			//	::OutputDebugString(L"\n\tMouse movement data is relative");
 			//}
-			//if (raw_input->data.mouse.usFlags == MOUSE_MOVE_ABSOLUTE)
+			//if ((raw_input->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == MOUSE_MOVE_ABSOLUTE)
 			//{
 			//	::OutputDebugString(L"\n\tMouse movement data is absolute");
 			//}
@@ -185,7 +187,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 
 void CRawInput::on_mouse_activated(uint16_t button_flag)
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_mouse_mutex);
+	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
 	// Check to prevent insertion of button flag more than once from mouse and touchpad
 	if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), button_flag) == m_mouse_activity.end()) // This button hasn't been pressed
@@ -193,7 +195,7 @@ void CRawInput::on_mouse_activated(uint16_t button_flag)
 		// Let's check if this is an initial mouse activity. If it is then we start tracking it's duration
 		if (m_mouse_activity.empty())
 		{
-			m_mouse_usage_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+			m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 		}
 
 		m_mouse_activity.push_back(button_flag);
@@ -222,7 +224,7 @@ void CRawInput::on_mouse_activated(uint16_t button_flag)
 
 void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_mouse_mutex);
+	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
 	std::wstring mouse_activated_time;
 
@@ -246,9 +248,9 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 		// If the mouse activity container is empty then that means we should accumulate it's usage time
 		if (m_mouse_activity.size() == 0)
 		{
-			m_mouse_usage_accumulated_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
-				- m_mouse_usage_start_time;
-			mouse_activated_time.append(L"\n\tMouse activated time: " + std::to_wstring(m_mouse_usage_accumulated_time));
+			m_input_hardware_accumulated_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
+				- m_input_hardware_start_time;
+			mouse_activated_time.append(L"\n\tMouse activated time: " + std::to_wstring(m_input_hardware_accumulated_time));
 			::OutputDebugString(mouse_activated_time.data());
 		}
 	}
@@ -271,14 +273,64 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 
 void CRawInput::on_app_switched()
 {
-	std::lock_guard<std::mutex> input_mutex(m_keyboard_mutex);
-	std::lock_guard<std::mutex> mouse_mutex(m_mouse_mutex);
+	std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
 
 	// Assign the initial time
-	m_mouse_usage_start_time = m_keyboard_usage_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+	m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+}
+
+bool CRawInput::is_mouse_activity_active() const
+{
+
+}
+
+bool CRawInput::is_mouse_activity_inactive() const
+{
+
 }
 
 void CRawInput::reset_hardware_usage_time()
 {
-	m_mouse_usage_start_time = m_mouse_usage_accumulated_time = m_keyboard_usage_start_time = m_keyboard_usage_accumulated_time = 0;
+	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+
+	//m_mouse_usage_start_time = m_mouse_usage_accumulated_time = m_keyboard_usage_start_time = m_keyboard_usage_accumulated_time = 0;
+	m_input_hardware_start_time = m_input_hardware_accumulated_time = 0;
 }
+
+bool CRawInput::create_input_monitor_timer_queue()
+{
+	// Create timer queue
+	m_input_monitor_timer_queue = ::CreateTimerQueue();
+	if (!::CreateTimerQueueTimer(
+		&m_input_monitor_timer_queue_timer,
+		m_input_monitor_timer_queue,
+		queueable_timer_rountine,
+		nullptr,
+		INPUT_MONITOR_RESET_THRESHOLD,
+		INPUT_MONITOR_RESET_THRESHOLD,
+		0))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void CRawInput::destroy_input_monitor_timer_queue()
+{
+	// Delete timer queue
+	if (m_input_monitor_timer_queue)
+	{
+		::DeleteTimerQueue(m_input_monitor_timer_queue);
+		m_input_monitor_timer_queue = nullptr;
+		m_input_monitor_timer_queue_timer = nullptr;
+	}
+}
+
+void CALLBACK queueable_timer_rountine(void *arguments, BYTE timer_or_wait_fired)
+{
+	g_raw_input->reset_hardware_usage_time();
+}
+
+CRawInput raw_input;
+CRawInput *g_raw_input = &raw_input;

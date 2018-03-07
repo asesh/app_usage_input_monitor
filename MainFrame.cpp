@@ -5,8 +5,6 @@
 
 #include "raw_input.h"
 
-CRawInput g_raw_input;
-
 // Switched to a new app
 bool on_app_switched(HWND window_handle)
 {
@@ -71,7 +69,7 @@ LRESULT CALLBACK window_proc(HWND window_handle, UINT window_message, WPARAM wpa
 		break;
 
 	case WM_INPUT:
-		g_raw_input.read_input_data(lparam);
+		g_raw_input->read_input_data(lparam);
 		break;
 
 	default:
@@ -94,7 +92,7 @@ int WINAPI wWinMain(HINSTANCE current_instance, HINSTANCE previous_instance, LPW
 	window_class_ex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
 	if (!::RegisterClassEx(&window_class_ex))
 	{
-		return false;
+		return 1;
 	}
 
 	// Create an overlapped window
@@ -113,10 +111,10 @@ int WINAPI wWinMain(HINSTANCE current_instance, HINSTANCE previous_instance, LPW
 	if (!window_handle)
 	{
 		::UnregisterClass(window_class_name, current_instance);
-		return false;
+		return 1;
 	}
 
-	if (!g_raw_input.init(window_handle))
+	if (!g_raw_input->init(window_handle))
 	{
 		return 1;
 	}
