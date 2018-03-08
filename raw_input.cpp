@@ -6,7 +6,7 @@
 
 CRawInput::CRawInput()
 {
-	m_keydown_counter = 0;
+	m_key_down_counter = 0;
 
 	reset_hardware_usage_time();
 }
@@ -49,6 +49,8 @@ bool CRawInput::read_input_data(LPARAM lparam)
 {
 	UINT input_size = 0;
 
+	std::wstring message;
+
 	// Get the size of raw input data
 	::GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, nullptr, &input_size, sizeof(RAWINPUTHEADER));
 	if (input_size == 0)
@@ -71,19 +73,21 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				// A user could have continuously pressed one or more keys so let's filter it out here
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) == m_keydown_virtual_keys.end())
 				{
-					// This key was not down before
-					m_keydown_virtual_keys.push_back(raw_input->data.keyboard.VKey);
-					m_keydown_counter++;
-					std::wstring message;
-					message.append(L"\n\tKey is down; **counter: " + std::to_wstring(m_keydown_counter));
-					::OutputDebugString(message.data());
-
-					// Initially if a key is down, let's assign the current time
-					if (m_keydown_counter == 1)
+					// If no keys is down, let's assign the current time
+					if (is_keyboard_activity_inactive())
 					{
 						m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-						return true;
 					}
+
+					// This key was not down before
+					m_keydown_virtual_keys.push_back(raw_input->data.keyboard.VKey);
+					m_key_down_counter++;
+
+#ifdef _DEBUG
+					message.append(L"\n\tKey is down; **counter: " + std::to_wstring(m_key_down_counter));
+					::OutputDebugString(message.data());
+
+#endif // _DEBUG
 				}
 			}
 			else if (raw_input->data.keyboard.Flags == RI_KEY_BREAK) // Key is up
@@ -95,13 +99,17 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				{
 					// This key was down before so let's remove it from the container
 					m_keydown_virtual_keys.remove(raw_input->data.keyboard.VKey);
-					m_keydown_counter--;
-					std::wstring message;
-					message.append(L"\n\tKey is up; **counter: " + std::to_wstring(m_keydown_counter));
+					m_key_down_counter--;
+
+#ifdef _DEBUG
+
+					message.append(L"\n\tKey is up; **counter: " + std::to_wstring(m_key_down_counter));
 					::OutputDebugString(message.data());
 
+#endif // _DEBUG
+
 					// Check if all the keys from the keyboard have been released
-					if (m_keydown_counter == 0)
+					if (is_keyboard_activity_inactive())
 					{
 						// This means all the pressed keys have been released
 						m_input_hardware_accumulated_time += std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -109,9 +117,11 @@ bool CRawInput::read_input_data(LPARAM lparam)
 
 						m_input_hardware_start_time = 0; // Reset keyboard start time
 
-						std::wstring message;
+#ifdef _DEBUG
 						message.append(L"\n\t**None of the keys are down: **" + std::to_wstring(m_input_hardware_accumulated_time));
 						::OutputDebugString(message.data());
+
+#endif
 					}
 				}
 			}
@@ -158,25 +168,17 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				break;
 
 			case RI_MOUSE_WHEEL:
-			{
-				std::wstring mouse_wheel_data;
-				mouse_wheel_data  = L"\n\tMouse wheel: " + std::to_wstring(raw_input->data.mouse.usButtonData);
-				::OutputDebugString(mouse_wheel_data.c_str());
+				on_mouse_wheel_movement(static_cast<uint16_t>(RI_MOUSE_WHEEL));
 				break;
-			}
 			}
 
 			if (raw_input->data.mouse.lLastX)
 			{
-				std::wstring mouse_position_data;
-				mouse_position_data = L"\n\tMouse X: " + std::to_wstring(raw_input->data.mouse.lLastX);
-				::OutputDebugString(mouse_position_data.c_str());
+				on_mouse_movement(MOUSE_CURSOR_MOVEMENT_MESSAGE);
 			}
 			if (raw_input->data.mouse.lLastY)
 			{
-				std::wstring mouse_position_data;
-				mouse_position_data = L"\n\tMouse Y: " + std::to_wstring(raw_input->data.mouse.lLastY);
-				::OutputDebugString(mouse_position_data.c_str());
+				on_mouse_movement(MOUSE_CURSOR_MOVEMENT_MESSAGE);
 			}
 			break;
 		}
@@ -206,6 +208,7 @@ void CRawInput::on_mouse_activated(uint16_t button_flag)
 		m_duplicate_mouse_activity.push_back(button_flag);
 	}
 
+#ifdef _DEBUG
 	switch (button_flag)
 	{
 	case RI_MOUSE_LEFT_BUTTON_DOWN:
@@ -220,6 +223,7 @@ void CRawInput::on_mouse_activated(uint16_t button_flag)
 		::OutputDebugString(L"\n\tRight mouse button down");
 		break;
 	}
+#endif // _DEBUG
 }
 
 void CRawInput::on_mouse_deactivated(uint16_t button_flag)
@@ -239,22 +243,27 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 		{
 			m_duplicate_mouse_activity.remove(button_flag);
 		}
-		else // No duplicate buttons down exist for this mouse button
+		else // No duplicate button down exists for this mouse button
 		{
 			// Remove this button flag from the container as it has been released by the user
 			m_mouse_activity.remove(button_flag);
 		}
 
 		// If the mouse activity container is empty then that means we should accumulate it's usage time
-		if (m_mouse_activity.size() == 0)
+		if (is_mouse_activity_inactive() && is_keyboard_activity_inactive())
 		{
 			m_input_hardware_accumulated_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
 				- m_input_hardware_start_time;
+			m_elapsed_time.push_back(m_input_hardware_accumulated_time);
+
+#ifdef _DEBUG
 			mouse_activated_time.append(L"\n\tMouse activated time: " + std::to_wstring(m_input_hardware_accumulated_time));
 			::OutputDebugString(mouse_activated_time.data());
+#endif // _DEBUG
 		}
 	}
 
+#ifdef _DEBUG
 	switch (button_flag)
 	{
 	case RI_MOUSE_LEFT_BUTTON_DOWN:
@@ -269,32 +278,136 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 		::OutputDebugString(L"\n\tRight mouse button up");
 		break;
 	}
+#endif // _DEBUG
+}
+
+void CRawInput::on_mouse_wheel_movement(uint16_t mouse_wheel_flag)
+{
+	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+
+	// Let's check if mouse activity is already being tracked
+	if (is_mouse_activity_active()) // Mouse activity is already being tracked
+	{
+		// Check if this mouse wheel flag is already present in the container
+		if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_wheel_flag) != m_mouse_activity.end()) // This mouse wheel flag is present
+		{
+			// This could mean that it's second mouse wheel message so we calculate the time elapsed from the first mouse wheel message
+			// but only if keyboard activity is not present
+			if (is_keyboard_activity_inactive()) // There's no keyboard activity
+			{
+				m_input_hardware_accumulated_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count()
+					- m_input_hardware_start_time;
+				m_elapsed_time.push_back(m_input_hardware_accumulated_time);
+
+#ifdef _DEBUG
+				::OutputDebugString(std::wstring(L"\n\t**Mouse wheel accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
+#endif // _DEBUG
+			}
+
+			m_mouse_activity.remove(mouse_wheel_flag);
+		}
+	}
+
+	// Check if this mouse wheel flag is already present in the container
+	else if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_wheel_flag) == m_mouse_activity.end()) // This mouse wheel flag isn't present
+	{
+		// We only assign initial time when both keyboard and mouse data are inactive
+		if (is_keyboard_activity_inactive() && is_mouse_activity_inactive())
+		{
+			// Assign an initial time
+			m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+		}
+		
+		// Either keyboard or mouse activity is already being tracked
+		m_mouse_activity.push_back(mouse_wheel_flag);
+
+#ifdef _DEBUG
+		::OutputDebugString(L"\n\tMouse wheel");
+#endif // _DEBUG
+	}
+}
+
+void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
+{
+	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+
+	// Let's check if mouse activity is already being tracked
+	if (is_mouse_activity_active()) // Mouse activity is already being tracked
+	{
+		// Check if this mouse wheel movement flag is already present in the container
+		if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) != m_mouse_activity.end()) // This mouse movement flag is present
+		{
+			// This could mean that it's second mouse movement message so we calculate the time elapsed from the first mouse wheel movement 
+			// but only if keyboard activity is not present
+			if (is_keyboard_activity_inactive()) // There's no keyboard activity
+			{
+				m_input_hardware_accumulated_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count()
+					- m_input_hardware_start_time;
+				m_elapsed_time.push_back(m_input_hardware_accumulated_time);
+
+#ifdef _DEBUG
+				::OutputDebugString(std::wstring(L"\n\t**Mouse movement accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
+#endif // _DEBUG
+			}
+
+			m_mouse_activity.remove(mouse_movement_flag);
+		}
+	}
+
+	// Check if this mouse movement flag is already present in the container
+	else if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) == m_mouse_activity.end()) // This mouse wheel movement isn't present
+	{
+		// We only assign initial time when both keyboard and mouse data are inactive
+		if (is_keyboard_activity_inactive() && is_mouse_activity_inactive())
+		{
+			// Assign an initial time
+			m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+		}
+
+		// Either keyboard or mouse activity is already being tracked
+		m_mouse_activity.push_back(mouse_movement_flag);
+
+#ifdef _DEBUG
+		::OutputDebugString(L"\n\tMouse movement");
+#endif // _DEBUG
+	}
 }
 
 void CRawInput::on_app_switched()
 {
 	std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
 
-	// Assign the initial time
+	// Assign an initial time
 	m_input_hardware_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock().now().time_since_epoch()).count();
+}
+
+bool CRawInput::is_keyboard_activity_active() const
+{
+	return m_key_down_counter != 0;
+}
+
+bool CRawInput::is_keyboard_activity_inactive() const
+{
+	return m_key_down_counter == 0;
 }
 
 bool CRawInput::is_mouse_activity_active() const
 {
-
+	return !m_mouse_activity.empty();
 }
 
 bool CRawInput::is_mouse_activity_inactive() const
 {
-
+	return m_mouse_activity.empty();
 }
 
 void CRawInput::reset_hardware_usage_time()
 {
 	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
-	//m_mouse_usage_start_time = m_mouse_usage_accumulated_time = m_keyboard_usage_start_time = m_keyboard_usage_accumulated_time = 0;
 	m_input_hardware_start_time = m_input_hardware_accumulated_time = 0;
+
+	m_elapsed_time.clear();
 }
 
 bool CRawInput::create_input_monitor_timer_queue()
