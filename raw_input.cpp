@@ -76,8 +76,8 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				// A user could have continuously pressed one or more keys so let's filter it out here
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) == m_keydown_virtual_keys.end())
 				{
-					// If no keys is down, let's assign the current time
-					if (is_keyboard_activity_inactive())
+					// If no key is down, let's assign the current time
+					if (is_keyboard_activity_inactive() && is_mouse_activity_inactive())
 					{
 						m_input_hardware_start_time = CHRONO_TIME_SINCE_EPOCH_COUNT;
 					}
@@ -112,7 +112,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 #endif // _DEBUG
 
 					// Check if all the keys from the keyboard have been released
-					if (is_keyboard_activity_inactive())
+					if (is_keyboard_activity_inactive() && is_mouse_activity_inactive())
 					{
 						// This means all the pressed keys have been released
 						m_input_hardware_accumulated_time += CHRONO_TIME_SINCE_EPOCH_COUNT - m_input_hardware_start_time;
@@ -170,7 +170,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				break;
 
 			case RI_MOUSE_WHEEL:
-				on_mouse_wheel_scrool(static_cast<uint16_t>(RI_MOUSE_WHEEL));
+				on_mouse_wheel_scroll(static_cast<uint16_t>(RI_MOUSE_WHEEL));
 				break;
 			}
 
@@ -278,7 +278,7 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 #endif // _DEBUG
 }
 
-void CRawInput::on_mouse_wheel_scrool(uint16_t mouse_wheel_flag)
+void CRawInput::on_mouse_wheel_scroll(uint16_t mouse_wheel_flag)
 {
 	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
@@ -328,7 +328,7 @@ void CRawInput::on_mouse_wheel_scrool(uint16_t mouse_wheel_flag)
 	}
 }
 
-void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
+void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag) 
 {
 	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
@@ -338,7 +338,7 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 		// Check if this mouse movement flag is already present in the container
 		if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) != m_mouse_activity.end()) // This mouse movement flag is present
 		{
-			// This could mean that it's second mouse movement message so we calculate the time elapsed from the first mouse movement 
+			// This could mean that it's second mouse movement message so we calculate the elapsed time from the first mouse movement 
 			// but only if keyboard activity is not present
 			if (is_keyboard_activity_inactive()) // There's no keyboard activity
 			{
@@ -447,7 +447,7 @@ void CRawInput::destroy_input_monitor_timer_queue()
 
 void CALLBACK queueable_timer_rountine(void *arguments, BYTE timer_or_wait_fired)
 {
-	g_raw_input->reset_hardware_usage_time();
+	//g_raw_input->reset_hardware_usage_time();
 }
 
 CRawInput raw_input;
