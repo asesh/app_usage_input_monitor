@@ -21,7 +21,7 @@ public:
 
 	void on_mouse_activated(uint16_t button_flag);
 	void on_mouse_deactivated(uint16_t button_flag);
-	void on_mouse_wheel_movement(uint16_t mouse_wheel_flag);
+	void on_mouse_wheel_scroll(uint16_t mouse_wheel_flag);
 	void on_mouse_movement(uint16_t mouse_scroll_flag);
 	void on_app_switched();
 

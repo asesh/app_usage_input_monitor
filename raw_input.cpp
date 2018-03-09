@@ -120,7 +120,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 						m_input_hardware_start_time = 0; // Reset keyboard start time
 
 #ifdef _DEBUG
-						message.append(L"\n\t**None of the keys are down: **" + std::to_wstring(m_input_hardware_accumulated_time));
+						message.append(L"\n\t\t**None of the keys are down: **" + std::to_wstring(m_input_hardware_accumulated_time));
 						::OutputDebugString(message.data());
 
 #endif
@@ -170,15 +170,11 @@ bool CRawInput::read_input_data(LPARAM lparam)
 				break;
 
 			case RI_MOUSE_WHEEL:
-				on_mouse_wheel_movement(static_cast<uint16_t>(RI_MOUSE_WHEEL));
+				on_mouse_wheel_scrool(static_cast<uint16_t>(RI_MOUSE_WHEEL));
 				break;
 			}
 
-			if (raw_input->data.mouse.lLastX)
-			{
-				on_mouse_movement(MOUSE_CURSOR_MOVEMENT_MESSAGE);
-			}
-			if (raw_input->data.mouse.lLastY)
+			if (raw_input->data.mouse.lLastX || raw_input->data.mouse.lLastY)
 			{
 				on_mouse_movement(MOUSE_CURSOR_MOVEMENT_MESSAGE);
 			}
@@ -258,7 +254,7 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 			m_elapsed_time.push_back(m_input_hardware_accumulated_time);
 
 #ifdef _DEBUG
-			mouse_activated_time.append(L"\n\tMouse activated time: " + std::to_wstring(m_input_hardware_accumulated_time));
+			mouse_activated_time.append(L"\n\t\t**Mouse activated time: " + std::to_wstring(m_input_hardware_accumulated_time));
 			::OutputDebugString(mouse_activated_time.data());
 #endif // _DEBUG
 		}
@@ -282,7 +278,7 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 #endif // _DEBUG
 }
 
-void CRawInput::on_mouse_wheel_movement(uint16_t mouse_wheel_flag)
+void CRawInput::on_mouse_wheel_scrool(uint16_t mouse_wheel_flag)
 {
 	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
 
@@ -300,7 +296,7 @@ void CRawInput::on_mouse_wheel_movement(uint16_t mouse_wheel_flag)
 				m_elapsed_time.push_back(m_input_hardware_accumulated_time);
 
 #ifdef _DEBUG
-				::OutputDebugString(std::wstring(L"\n\t**Mouse wheel ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
+				::OutputDebugString(std::wstring(L"\n\t\t**Mouse wheel ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
 #endif // _DEBUG
 			}
 
@@ -339,10 +335,10 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 	// Let's check if mouse activity is already being tracked
 	if (is_mouse_activity_active()) // Mouse activity is already being tracked
 	{
-		// Check if this mouse wheel movement flag is already present in the container
+		// Check if this mouse movement flag is already present in the container
 		if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) != m_mouse_activity.end()) // This mouse movement flag is present
 		{
-			// This could mean that it's second mouse movement message so we calculate the time elapsed from the first mouse wheel movement 
+			// This could mean that it's second mouse movement message so we calculate the time elapsed from the first mouse movement 
 			// but only if keyboard activity is not present
 			if (is_keyboard_activity_inactive()) // There's no keyboard activity
 			{
@@ -350,7 +346,7 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 				m_elapsed_time.push_back(m_input_hardware_accumulated_time);
 
 #ifdef _DEBUG
-				::OutputDebugString(std::wstring(L"\n\t**Mouse movement ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
+				::OutputDebugString(std::wstring(L"\n\t\t**Mouse movement ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
 #endif // _DEBUG
 			}
 
@@ -364,7 +360,7 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 	}
 
 	// Check if this mouse movement flag is already present in the container
-	else if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) == m_mouse_activity.end()) // This mouse wheel movement isn't present
+	else if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), mouse_movement_flag) == m_mouse_activity.end()) // This mouse movement isn't present
 	{
 		// We only assign initial time when both keyboard and mouse data are inactive
 		if (is_keyboard_activity_inactive() && is_mouse_activity_inactive())

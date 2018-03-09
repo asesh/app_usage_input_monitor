@@ -21,9 +21,8 @@ bool on_app_switched(HWND window_handle)
 			// Get the buffer size required to hold full process image name
 			// There's no need to check if it managed to get the absolute path of app as we have already zeroed out the buffer
 			::QueryFullProcessImageName(process_handle, 0, image_path, &buffer_size);
-			std::wstring app_path = L"\n";
-			app_path.append(image_path);
-			::OutputDebugString(image_path);
+			std::wstring app_path = L"\n\t\t***Switched to a new app: " + std::wstring(image_path);
+			::OutputDebugString(app_path.data());
 
 			::CloseHandle(process_handle);
 
