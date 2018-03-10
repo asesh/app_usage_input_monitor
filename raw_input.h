@@ -3,7 +3,7 @@
 
 #pragma once
 
-#define INPUT_MONITOR_RESET_THRESHOLD	60 * 1000 // 1 minute
+#define INPUT_MONITOR_RESET_THRESHOLD	30 * 1000 // 1 minute
 
 #define MOUSE_CURSOR_MOVEMENT_MESSAGE	3000
 
@@ -56,7 +56,8 @@ protected:
 
 	uint64_t m_input_hardware_start_time, m_input_hardware_accumulated_time;
 
-	std::list<uint64_t> m_elapsed_time;
+	std::list<uint64_t> m_mouse_signal_duration;
+	uint64_t m_last_accumulated_time;
 };
 
 extern CRawInput *g_raw_input;
