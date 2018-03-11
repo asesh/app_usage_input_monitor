@@ -405,6 +405,14 @@ void CRawInput::reset_hardware_usage_time()
 #endif // _DEBUG
 
 	m_input_hardware_start_time = m_input_hardware_accumulated_time = m_last_accumulated_time = 0;
+
+	// A user could have just scrolled once or moved his mouse once so we check and remove this data cause this data will hamper the 
+	// calculation of total accumulation duration in the next sequence
+	if (!m_mouse_activity.empty())
+	{
+		m_mouse_activity.remove(RI_MOUSE_WHEEL);
+		m_mouse_activity.remove(MOUSE_CURSOR_MOVEMENT_MESSAGE);
+	}
 }
 
 bool CRawInput::create_input_monitor_timer_queue()
