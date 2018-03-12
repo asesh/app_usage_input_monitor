@@ -21,7 +21,7 @@
     <ClCompile Include="raw_input.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FileWriter.cpp">
+    <ClCompile Include="file_writer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -35,7 +35,7 @@
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FileWriter.h">
+    <ClInclude Include="file_writer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

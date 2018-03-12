@@ -2,6 +2,7 @@
 //
 
 #include "stdafx.h"
+#include "file_writer.h"
 #include "raw_input.h"
 
 #define CHRONO_TIME_SINCE_EPOCH_COUNT \
@@ -14,6 +15,8 @@ CRawInput::CRawInput()
 	m_last_accumulated_time = 0;
 
 	m_input_hardware_start_time = m_input_hardware_accumulated_time = m_last_accumulated_time = 0;
+
+	m_input_monitor_timer_queue = m_input_monitor_timer_queue_timer = nullptr;
 }
 
 CRawInput::~CRawInput()
@@ -47,6 +50,8 @@ bool CRawInput::init(HWND window_handle)
 
 	create_input_monitor_timer_queue();
 
+	m_file_writer.init(L"app_input_data.json");
+
 	return true;
 }
 
@@ -73,7 +78,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 		case RIM_TYPEKEYBOARD: // So we have keyboard data
 			if (raw_input->data.keyboard.Flags == RI_KEY_MAKE) // Key is down
 			{
-				std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
+				std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 				// A user could have continuously pressed one or more keys so let's filter it out here
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) == m_keydown_virtual_keys.end())
@@ -91,13 +96,12 @@ bool CRawInput::read_input_data(LPARAM lparam)
 #ifdef _DEBUG
 					message.append(L"\n\tKey is down; **counter: " + std::to_wstring(m_key_down_counter));
 					::OutputDebugString(message.data());
-
 #endif // _DEBUG
 				}
 			}
 			else if (raw_input->data.keyboard.Flags == RI_KEY_BREAK) // Key is up
 			{
-				std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
+				std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 				// If a key was previously down, let's check and remove it from the container
 				if (std::find(m_keydown_virtual_keys.begin(), m_keydown_virtual_keys.end(), raw_input->data.keyboard.VKey) != m_keydown_virtual_keys.end())
@@ -118,6 +122,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 						m_input_hardware_accumulated_time += CHRONO_TIME_SINCE_EPOCH_COUNT - 
 							(m_input_hardware_start_time == 0 ? CHRONO_TIME_SINCE_EPOCH_COUNT : m_input_hardware_start_time);
 						m_last_accumulated_time = m_input_hardware_accumulated_time;
+						m_accumulated_input_duration.push_back(m_last_accumulated_time);
 
 						m_input_hardware_start_time = 0; // Reset keyboard start time
 
@@ -176,7 +181,7 @@ bool CRawInput::read_input_data(LPARAM lparam)
 
 void CRawInput::on_mouse_activated(uint16_t button_flag)
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 	// Check to prevent insertion of button flag more than once from mouse and touchpad
 	if (std::find(m_mouse_activity.begin(), m_mouse_activity.end(), button_flag) == m_mouse_activity.end()) // This button hasn't been pressed
@@ -215,7 +220,7 @@ void CRawInput::on_mouse_activated(uint16_t button_flag)
 
 void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 	std::wstring mouse_activated_time;
 
@@ -242,6 +247,7 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 			m_input_hardware_accumulated_time = CHRONO_TIME_SINCE_EPOCH_COUNT - 
 				(m_input_hardware_start_time == 0 ? CHRONO_TIME_SINCE_EPOCH_COUNT : m_input_hardware_start_time);;
 			m_last_accumulated_time = m_input_hardware_accumulated_time;
+			m_accumulated_input_duration.push_back(m_last_accumulated_time);
 
 #ifdef _DEBUG
 			mouse_activated_time.append(L"\n\t\t**Mouse activated time: " + std::to_wstring(m_input_hardware_accumulated_time));
@@ -270,7 +276,7 @@ void CRawInput::on_mouse_deactivated(uint16_t button_flag)
 
 void CRawInput::on_mouse_wheel_scroll(uint16_t mouse_wheel_flag)
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 	// Let's check if mouse wheel scroll activity is already being tracked
 	if (is_mouse_activity_active()) // Mouse wheel scroll activity is already being tracked
@@ -284,6 +290,7 @@ void CRawInput::on_mouse_wheel_scroll(uint16_t mouse_wheel_flag)
 			{
 				m_input_hardware_accumulated_time = CHRONO_TIME_SINCE_EPOCH_COUNT - m_input_hardware_start_time;
 				m_last_accumulated_time = m_input_hardware_accumulated_time;
+				m_accumulated_input_duration.push_back(m_last_accumulated_time);
 
 #ifdef _DEBUG
 				::OutputDebugString(std::wstring(L"\n\t\t**Mouse wheel scroll ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
@@ -320,7 +327,7 @@ void CRawInput::on_mouse_wheel_scroll(uint16_t mouse_wheel_flag)
 
 void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag) 
 {
-	std::lock_guard<std::mutex> mouse_mutex(m_input_hardware_mutex);
+	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
 	// Let's check if mouse activity is already being tracked
 	if (is_mouse_activity_active()) // Mouse activity is already being tracked
@@ -334,6 +341,7 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 			{
 				m_input_hardware_accumulated_time = CHRONO_TIME_SINCE_EPOCH_COUNT - m_input_hardware_start_time;
 				m_last_accumulated_time = m_input_hardware_accumulated_time;
+				m_accumulated_input_duration.push_back(m_last_accumulated_time);
 
 #ifdef _DEBUG
 				::OutputDebugString(std::wstring(L"\n\t\t**Mouse movement ended: Accumulated time: " + std::to_wstring(m_input_hardware_accumulated_time)).data());
@@ -368,12 +376,38 @@ void CRawInput::on_mouse_movement(uint16_t mouse_movement_flag)
 	}
 }
 
-void CRawInput::on_app_switched()
+void CRawInput::on_app_switched(std::wstring &switched_app_path)
 {
-	std::lock_guard<std::mutex> input_mutex(m_input_hardware_mutex);
+	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
+
+	m_recently_used_app_path = switched_app_path;
+
+	m_input_hardware_accumulated_time = m_last_accumulated_time = 0;
+
+	// A user could have just scrolled once or moved his mouse once so we check and remove this data cause this data will hamper the 
+	// calculation of total accumulation duration in the next sequence
+	if (!m_mouse_activity.empty()) // There are one or more mouse activity messages
+	{
+		m_mouse_activity.remove(RI_MOUSE_WHEEL);
+		m_mouse_activity.remove(MOUSE_CURSOR_MOVEMENT_MESSAGE);
+	}
+
+	// Let's accumulate the total duration elapsed from all the inputs
+	uint64_t total_duration = 0;
+	for (const auto &time_elapsed : m_accumulated_input_duration)
+	{
+		total_duration += time_elapsed;
+	}
+	m_accumulated_input_duration.clear(); // Clear this container
+#ifdef _DEBUG
+	::OutputDebugString(std::wstring(L"\n\n\t\t\t**App switched. Total duration: " + std::to_wstring(total_duration)).data());
+#endif // _DEBUG
 
 	// Assign an initial time
 	m_input_hardware_start_time = CHRONO_TIME_SINCE_EPOCH_COUNT;
+
+	std::wstring json_buffer = L"{\n\n\t \"app_name\" : \"" + m_recently_used_app_path + L"\",\n\t \"duration\" : " + std::to_wstring(total_duration) + L"\n}\n";
+	m_file_writer.write_data(json_buffer.data());
 }
 
 bool CRawInput::is_keyboard_activity_active() const
@@ -400,19 +434,29 @@ void CRawInput::reset_hardware_usage_time()
 {
 	std::lock_guard<std::mutex> hardware_usage_mutex(m_input_hardware_mutex);
 
-#ifdef _DEBUG
-	::OutputDebugString(std::wstring(L"\n\t\t\t**Timer fired. Total duration: " + std::to_wstring(m_last_accumulated_time)).data());
-#endif // _DEBUG
-
 	m_input_hardware_start_time = m_input_hardware_accumulated_time = m_last_accumulated_time = 0;
 
 	// A user could have just scrolled once or moved his mouse once so we check and remove this data cause this data will hamper the 
 	// calculation of total accumulation duration in the next sequence
-	if (!m_mouse_activity.empty())
+	if (!m_mouse_activity.empty()) // There are one or more mouse activity messages
 	{
 		m_mouse_activity.remove(RI_MOUSE_WHEEL);
 		m_mouse_activity.remove(MOUSE_CURSOR_MOVEMENT_MESSAGE);
 	}
+
+	// Let's accumulate the total duration elapsed from all the inputs
+	uint64_t total_duration = 0;
+	for (const auto &time_elapsed : m_accumulated_input_duration)
+	{
+		total_duration += time_elapsed;
+	}
+	m_accumulated_input_duration.clear(); // Clear this container
+#ifdef _DEBUG
+	::OutputDebugString(std::wstring(L"\n\n\t\t\t**Timer fired. Total duration: " + std::to_wstring(total_duration)).data());
+#endif // _DEBUG
+
+	std::wstring json_buffer = L"{\n\n\t \"app_name\" : \"" + m_recently_used_app_path + L"\",\n\t \"duration\" : " + std::to_wstring(total_duration) + L"\n}\n";
+	m_file_writer.write_data(json_buffer.data());
 }
 
 bool CRawInput::create_input_monitor_timer_queue()
@@ -420,13 +464,13 @@ bool CRawInput::create_input_monitor_timer_queue()
 	// Create timer queue
 	m_input_monitor_timer_queue = ::CreateTimerQueue();
 	if (!::CreateTimerQueueTimer(
-		&m_input_monitor_timer_queue_timer,
-		m_input_monitor_timer_queue,
-		queueable_timer_rountine,
-		nullptr,
-		INPUT_MONITOR_RESET_THRESHOLD,
-		INPUT_MONITOR_RESET_THRESHOLD,
-		0))
+			&m_input_monitor_timer_queue_timer,
+			m_input_monitor_timer_queue,
+			queueable_timer_rountine,
+			nullptr,
+			INPUT_MONITOR_RESET_THRESHOLD,
+			INPUT_MONITOR_RESET_THRESHOLD,
+			0))
 	{
 		return false;
 	}

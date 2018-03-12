@@ -146,12 +146,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="FileWriter.cpp" />
+    <ClCompile Include="file_writer.cpp" />
     <ClCompile Include="MainFrame.cpp" />
     <ClCompile Include="raw_input.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="FileWriter.h" />
+    <ClInclude Include="file_writer.h" />
     <ClInclude Include="raw_input.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />

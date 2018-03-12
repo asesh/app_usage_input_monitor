@@ -3,9 +3,11 @@
 
 #pragma once
 
-#define INPUT_MONITOR_RESET_THRESHOLD	30 * 1000 // 1 minute
+#define INPUT_MONITOR_RESET_THRESHOLD	10 * 1000
 
 #define MOUSE_CURSOR_MOVEMENT_MESSAGE	3000
+
+class CFileWriter;
 
 void CALLBACK queueable_timer_rountine(void *arguments, BYTE timer_or_wait_fired);
 
@@ -23,7 +25,7 @@ public:
 	void on_mouse_deactivated(uint16_t button_flag);
 	void on_mouse_wheel_scroll(uint16_t mouse_wheel_flag);
 	void on_mouse_movement(uint16_t mouse_scroll_flag);
-	void on_app_switched();
+	void on_app_switched(std::wstring &switched_app_path);
 
 	bool is_keyboard_activity_active() const;
 	bool is_keyboard_activity_inactive() const;
@@ -56,8 +58,12 @@ protected:
 
 	uint64_t m_input_hardware_start_time, m_input_hardware_accumulated_time;
 
-	std::list<uint64_t> m_mouse_signal_duration;
+	std::list<uint64_t> m_accumulated_input_duration;
 	uint64_t m_last_accumulated_time;
+
+	CFileWriter m_file_writer;
+
+	std::wstring m_recently_used_app_path;
 };
 
 extern CRawInput *g_raw_input;

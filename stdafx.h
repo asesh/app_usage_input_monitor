@@ -23,4 +23,6 @@
 
 #include <algorithm>
 
+#include <fstream>
+
 #include <Windows.h>

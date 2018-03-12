@@ -2,12 +2,18 @@
 //
 
 #include "stdafx.h"
-
+#include "file_writer.h"
 #include "raw_input.h"
 
 // Switched to a new app
 bool on_app_switched(HWND window_handle)
 {
+	wchar_t image_path[MAX_PATH * 2] = { 0 };
+	DWORD buffer_size = sizeof(image_path) / sizeof(wchar_t);
+
+	static std::wstring old_app_path;
+	std::wstring current_app_path;
+
 	DWORD process_id = 0;
 	::GetWindowThreadProcessId(window_handle, &process_id);
 	if (process_id)
@@ -15,19 +21,17 @@ bool on_app_switched(HWND window_handle)
 		HANDLE process_handle = ::OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, process_id);
 		if (process_handle)
 		{
-			wchar_t image_path[MAX_PATH * 2] = { 0 };
-			DWORD buffer_size = sizeof(image_path) / sizeof(wchar_t);
-
 			// Get the buffer size required to hold full process image name
 			// There's no need to check if it managed to get the absolute path of app as we have already zeroed out the buffer
 			::QueryFullProcessImageName(process_handle, 0, image_path, &buffer_size);
-			std::wstring app_path = L"\n\t\t***Switched to a new app: " + std::wstring(image_path);
-			::OutputDebugString(app_path.data());
+			current_app_path = image_path;
+			::OutputDebugString(std::wstring(L"\n\t\t***Switched to a new app: " + std::wstring(image_path)).data());
 
 			::CloseHandle(process_handle);
-
-			return true;
 		}
+		g_raw_input->on_app_switched(current_app_path);
+
+		return true;
 	}
 	return false;
 }
@@ -125,7 +129,7 @@ int WINAPI wWinMain(HINSTANCE current_instance, HINSTANCE previous_instance, LPW
 		win_event_callback,
 		0,
 		0,
-		WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+		WINEVENT_OUTOFCONTEXT);
 
 	::ShowWindow(window_handle, show_command);
 
